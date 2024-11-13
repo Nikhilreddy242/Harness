@@ -1,0 +1,1419 @@
+pipeline:
+  name: WMPOR AWS UI-SVC API
+  identifier: AWS_UISVC_API
+  projectIdentifier: wmpor
+  orgIdentifier: regionsappdev
+  tags: {}
+  stages:
+    - stage:
+        name: dev
+        identifier: dev
+        description: ""
+        type: Deployment
+        spec:
+          deploymentType: Ssh
+          service:
+            serviceRef: <+input>
+            serviceInputs: <+input>
+          environment:
+            environmentRef: dev
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: delegate
+          execution:
+            steps:
+              - step:
+                  identifier: Debug_info
+                  type: ShellScript
+                  name: Debug info
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          echo "trigger.artifact.build="<+trigger.artifact.build>
+                          echo "trigger.baseCommitSha="<+trigger.baseCommitSha>
+                          echo "trigger.commitSha="<+trigger.commitSha>
+                          echo "trigger.event="<+trigger.event>
+                          echo "trigger.gitUser="<+trigger.gitUser>
+                          echo "trigger.manifest.version="<+trigger.manifest.version>
+                          echo "trigger.payload="<+trigger.payload>
+                          echo "trigger.prNumber="<+trigger.prNumber>
+                          echo "trigger.prTitle="<+trigger.prTitle>
+                          echo "trigger.repoUrl="<+trigger.repoUrl>
+                          echo "trigger.sourceBranch="<+trigger.sourceBranch>
+                          echo "trigger.targetBranch="<+trigger.targetBranch>
+                    environmentVariables: []
+                    outputVariables: []
+                  timeout: 10m
+              - step:
+                  name: Delegate Selector
+                  identifier: Delegate_Selector
+                  template:
+                    templateRef: account.Delegate_Selector
+              - step:
+                  name: Create Working Directories
+                  identifier: Create_Working_Directories
+                  template:
+                    templateRef: account.Create_Working_Directories
+                    templateInputs:
+                      type: Command
+                      spec:
+                        type: Command
+                        onDelegate: true
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+              - step:
+                  type: Command
+                  name: Retrieve Source Artifact
+                  identifier: Retrieve_Source_Artifact
+                  spec:
+                    onDelegate: true
+                    environmentVariables: []
+                    outputVariables:
+                      - name: lambdazipfile
+                        type: String
+                        value: lambdazipfile
+                    output:
+                      - name: DestinationPath
+                        value: <+variable.runtimePath>/*.zip
+                    commandUnits:
+                      - identifier: Download_Artifact
+                        name: Download Artifact
+                        type: DownloadArtifact
+                        spec:
+                          destinationPath: <+variable.runtimePath>
+                          artifactFormat: ZIP
+                      - identifier: Unzip_Artifact_Archive_file
+                        name: Get Lambda API Zip Artifact filename
+                        type: Script
+                        spec:
+                          workingDirectory: <+variable.runtimePath>
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                ls -la <+variable.runtimePath>
+                                pwd
+                                zipfiles=(*.zip)
+                                lambdazipfile=$zipfiles
+                                echo "lambdazipfile" $lambdazipfile
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                  timeout: 10m
+              - step:
+                  name: Get TFC TOKEN
+                  identifier: Get_TFC_TOKEN
+                  template:
+                    templateRef: Get_TFC_Token
+                    versionLabel: "1"
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        executionTarget: {}
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        environmentVariables:
+                          - name: VAULT_NAMESPACE
+                            type: String
+                            value: ghec-appdev
+                          - name: VAULT_ROLE
+                            type: String
+                            value: regions-appdev_shared_secrets-role
+                          - name: MAX_RETRIES
+                            type: String
+                            value: "10"
+                          - name: VAULT_SERVICEACCOUNT
+                            type: String
+                            value: svc_harn_vault_p
+                          - name: VAULT_URL
+                            type: String
+                            value: https://hv.rgbk.com:8200
+              - step:
+                  name: Generate Credentials File
+                  identifier: generate_credentials_file
+                  template:
+                    templateRef: account.generateCredentialsFileV2
+                    versionLabel: v8
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        environmentVariables:
+                          - name: TFE_URL
+                            type: String
+                            value: <+pipeline.variables.tf_domain>
+                          - name: TFE_TOKEN
+                            type: String
+                            value: <+execution.steps.Get_TFC_TOKEN.output.outputVariables.TFC_TOKEN>
+                          - name: WORKING_DIRECTORY
+                            type: String
+                            value: <+variable.runtimePath>
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+              - step:
+                  identifier: Debug_info_1
+                  type: ShellScript
+                  name: Debug Lambda File Path to Identify
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |
+                          aws s3 ls
+                          echo "artifacts.primary.artifactPath" <+artifacts.primary.artifactPath>
+                          echo "Lambda File path" <+variable.runtimePath>"/"<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                          echo "artifacts.primary.tag" <+artifacts.primary.tag>  
+                          echo "artifacts.primary.tagRegex" <+artifacts.primary.tagRegex>  
+                          echo "artifacts.primary.identifier" <+artifacts.primary.identifier>  
+                          echo "artifacts.primary.type" <+artifacts.primary.type>  
+                          echo "artifacts.primary.primaryArtifact" <+artifacts.primary.primaryArtifact>  
+                          echo "artifacts.primary.image" <+artifacts.primary.image>  
+                          echo "artifacts.primary.imagePullSecret" <+artifacts.primary.imagePullSecret>  
+                          echo "artifacts.primary.label" <+artifacts.primary.label>  
+                          echo "artifacts.primary.connectorRef" <+artifacts.primary.connectorRef>  
+                          echo "artifacts.primary.imagePath" <+artifacts.primary.imagePath>
+                          echo "Retrieve Artifact File" <+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                          echo "runtimePath" <+variable.runtimePath>
+                          echo "path to lambda zip file" <+variable.runtimePath>"/"<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                    environmentVariables: []
+                    outputVariables: []
+                  timeout: 10m
+              - stepGroup:
+                  name: Deploy App
+                  identifier: Deploy_App
+                  steps:
+                    - step:
+                        name: Get AWS Creds
+                        identifier: Get_AWS_Creds
+                        template:
+                          templateRef: account.getAwsCredentials
+                          versionLabel: v1
+                          templateInputs:
+                            type: ShellScript
+                            spec:
+                              environmentVariables:
+                                - name: VAULT_URL
+                                  type: String
+                                  value: https://hv.rgbk.com:8200
+                                - name: VAULT_SERVICEACCOUNT
+                                  type: String
+                                  value: svc_harn_vault_p
+                                - name: VAULT_NAMESPACE
+                                  type: String
+                                  value: <+pipeline.variables.AWS_VAULT_NAMESPACE>
+                                - name: CREDS_PRODUCER_NAME
+                                  type: String
+                                  value: <+pipeline.stages.dev.variables.AWS_CREDS_PRODUCER_NAME>
+                                - name: CREDS_PRODUCER_ROLE
+                                  type: String
+                                  value: <+pipeline.stages.dev.variables.AWS_CREDS_PRODUCER_ROLE>
+                                - name: MAX_RETRIES
+                                  type: String
+                                  value: "10"
+                                - name: RETRY_INTERVAL
+                                  type: String
+                                  value: "5"
+                              delegateSelectors:
+                                - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                    - step:
+                        type: ShellScript
+                        name: Upload app to S3
+                        identifier: Upload_app_to_S3
+                        spec:
+                          shell: Bash
+                          executionTarget: {}
+                          source:
+                            type: Inline
+                            spec:
+                              script: "set -euo pipefail\n\necho \"S3 Bucket Path:- ${S3_BUCKET}\"\n\n# Configure AWS configure credentials\naws configure set default.region ${AWS_REGION}\naws configure set aws_access_key_id ${AWS_ACCESS_KEY}\naws configure set aws_secret_access_key ${AWS_SECRET_KEY}\n\nfunction verifyBucketAccess() {\n\taws s3api head-bucket --bucket ${S3_BUCKET}\n\treturn $?\n}\n\nretry=0\n\nuntil [ ${retry} -ge ${MAX_RETRIES} ]\ndo\n\tverifyBucketAccess && break\n\tretry=$[${retry}+1]\n\techo \"Retrying\"\n\tsleep ${RETRY_INTERVAL}\ndone\n\nif [ ${retry} -ge ${MAX_RETRIES} ]; then\n  echo \"Failed after ${MAX_RETRIES} attempts!\"\n  exit 1\nfi\n\necho \"S3 - ${S3_BUCKET}\"\n\n# Delete existing files in S3\necho \"S3 - ${S3_BUCKET} - Deleting zip files\"\naws s3 rm s3://${S3_BUCKET} --recursive --exclude \"*\" --include \"*.zip\"\n\n# Copy files to S3 \necho \"S3 - ${S3_BUCKET} - Uploading new zip file\"\naws s3 cp \"${SOURCE_DIR}\" s3://${S3_BUCKET} --recursive\n"
+                          environmentVariables:
+                            - name: AWS_ACCESS_KEY
+                              type: String
+                              value: <+execution.steps.Deploy_App.steps.Get_AWS_Creds.output.outputVariables.ACCESS_KEY>
+                            - name: AWS_SECRET_KEY
+                              type: String
+                              value: <+execution.steps.Deploy_App.steps.Get_AWS_Creds.output.outputVariables.SECRET_KEY>
+                            - name: AWS_REGION
+                              type: String
+                              value: us-east-1
+                            - name: S3_BUCKET
+                              type: String
+                              value: <+pipeline.variables.S3LambdaBucket>
+                            - name: SOURCE_DIR
+                              type: String
+                              value: <+variable.runtimePath>
+                            - name: MAX_RETRIES
+                              type: String
+                              value: "5"
+                            - name: RETRY_INTERVAL
+                              type: String
+                              value: "25"
+                          outputVariables: []
+                          delegateSelectors:
+                            - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        timeout: 10m
+                  when:
+                    stageStatus: Success
+                    condition: "false"
+              - step:
+                  type: TerraformPlan
+                  name: Terraform Plan
+                  identifier: TerraformPlan_1
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |
+                          echo $lambda_filepath
+                    provisionerIdentifier: wmpor_repository_aws
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                    cloudCliConfiguration:
+                      command: Apply
+                      configFiles:
+                        store:
+                          spec:
+                            connectorRef: wmporrepository
+                            gitFetchType: Branch
+                            repoName: wmpor-repository
+                            branch: feature/terraform-setup
+                            folderPath: src/wmpor.api/infra
+                          type: Github
+                      environmentVariables:
+                        - name: TF_CLI_CONFIG_FILE
+                          value: <+execution.steps.generate_credentials_file.output.outputVariables.TF_CLI_CONFIG_FILE>
+                          type: String
+                        - name: TF_LOG
+                          value: INFO
+                          type: String
+                        - name: lambda_file_path
+                          value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                          type: String
+                        - name: TF_WORKSPACE
+                          value: <+stage.variables.TF_WORKSPACE>
+                          type: String
+                      commandFlags:
+                        - commandType: PLAN
+                          flag: <+variable.account.tfcplan_cmd_args_for_wiz>
+                      varFiles:
+                        - varFile:
+                            type: Remote
+                            identifier: tfvars
+                            spec:
+                              store:
+                                type: Github
+                                spec:
+                                  gitFetchType: Branch
+                                  repoName: wmpor-repository
+                                  branch: feature/terraform-setup
+                                  paths:
+                                    - src/wmpor.api/infra/env.<+env.identifier>.tfvars
+                                  connectorRef: wmporrepository
+                  timeout: 10m
+                  when:
+                    stageStatus: Success
+                    condition: "true"
+              - step:
+                  name: Wiz IaC Scan
+                  identifier: Wiz_IaC_Scan
+                  template:
+                    templateRef: account.Wiz_IaC_Scan
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        environmentVariables:
+                          - name: TFE_TOKEN
+                            type: String
+                            value: <+execution.steps.Get_TFC_TOKEN.output.outputVariables.TFC_TOKEN>
+                          - name: WORKING_DIRECTORY
+                            type: String
+                            value: <+variable.runtimePath>
+              - step:
+                  type: HarnessApproval
+                  name: Approve IaC changes
+                  identifier: HarnessApproval_1
+                  spec:
+                    approvalMessage: Please review the following information and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - account.Account_Admin
+                        - account.HARN_WMPOR_DEV
+                        - account.HARN_WMPOR_ADM
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs: []
+                  timeout: 1d
+              - step:
+                  type: TerraformApply
+                  name: Terraform Apply
+                  identifier: Terraform_Apply
+                  spec:
+                    provisionerIdentifier: wmpor_repository_aws
+                    cloudCliConfiguration:
+                      spec:
+                        configFiles:
+                          store:
+                            spec:
+                              connectorRef: wmporrepository
+                              repoName: wmpor-repository
+                              gitFetchType: Branch
+                              branch: feature/terraform-setup
+                              folderPath: src/wmpor.api/infra
+                            type: Github
+                        environmentVariables:
+                          - name: TF_CLI_CONFIG_FILE
+                            value: <+execution.steps.generate_credentials_file.output.outputVariables.TF_CLI_CONFIG_FILE>
+                            type: String
+                          - name: TF_LOG
+                            value: INFO
+                            type: String
+                          - name: lambda_file_path
+                            value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                            type: String
+                        varFiles:
+                          - varFile:
+                              type: Remote
+                              identifier: tfvars
+                              spec:
+                                store:
+                                  type: Github
+                                  spec:
+                                    gitFetchType: Branch
+                                    repoName: bs-it-alm-sample-spa
+                                    branch: feature/terraform-setup
+                                    paths:
+                                      - src/wmpor.api/infra/env.<+env.identifier>.tfvars
+                                    connectorRef: wmporrepository
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                  timeout: 1h
+              - step:
+                  name: Seeker Lambda IAST Scan
+                  identifier: lambda_scan
+                  template:
+                    templateRef: account.IAST_Seeker_and_Lambda_Scanner_V1
+                    versionLabel: v1
+                    templateInputs:
+                      type: ShellScript
+                      when:
+                        condition: <+stage.variables.seeker_enable> == "true"
+              - step:
+                  type: Email
+                  name: Email results
+                  identifier: Email_results
+                  spec:
+                    to: john.roberts@regions.com,Nikhil.Vallapureddy@regions.com,Zachery.Zima@regions.com
+                    cc: ""
+                    subject: "🎉 Harness Pipeline Execution Success: <+pipeline.name> Completed Successfully! 🎉"
+                    body: <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pipeline Success Notification</title></head><body><div><div><h1>Harness Pipeline Execution Success</h1></div><div><p>We are pleased to inform you that the pipeline <strong><+pipeline.name></strong> has successfully completed all stages. Below are the details of the execution:</p><h2>Execution Details</h2><ul><li><span><strong>Pipeline Name:</strong></span> <+pipeline.name></li><li><span><strong>Status:</strong></span> Success</li><li><span><strong>Service:</strong></span> <+service.name></li><li><span><strong>Environment:</strong></span> <+env.name></li></ul><p><strong>Additional Notes:</strong></p><p>If you have any questions or need further details, please feel free to reach out.</p><p><a href="mailto:wealthapplicationdevelopment@regions.com">Regions Wealth Engineering</a></p></div><div><p>&copy; 2024 Regions Financial.</p><p>All rights reserved.</p></div></div></body></html>
+                  timeout: 10m
+            rollbackSteps: []
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+        variables:
+          - name: seeker_enable
+            type: String
+            description: Enables or disables Seeker scan
+            required: false
+            value: "false"
+          - name: AWS_CREDS_PRODUCER_NAME
+            type: String
+            value: aws_wmpor_dev-credproducer-path
+          - name: AWS_CREDS_PRODUCER_ROLE
+            type: String
+            value: aws_wmpor_dev-role
+          - name: AWS_ACCOUNT_ID
+            type: String
+            value: "058264440742"
+          - name: TF_WORKSPACE
+            type: String
+            description: ""
+            required: false
+            value: wmpor-portalapi-dev
+        when:
+          pipelineStatus: Success
+          condition: "true"
+    - stage:
+        name: Approve Dev
+        identifier: Dev_Approval
+        description: ""
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Approve Dev
+                  identifier: Approve_Dev
+                  type: HarnessApproval
+                  timeout: 1d
+                  spec:
+                    approvalMessage: |-
+                      Please review the following information
+                      and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                      userGroups:
+                        - account.HARN_WMPOR_DEV
+                    isAutoRejectEnabled: false
+                    approverInputs: []
+        tags: {}
+        when:
+          pipelineStatus: Success
+          condition: "false"
+    - stage:
+        name: test
+        identifier: test
+        description: ""
+        type: Deployment
+        spec:
+          deploymentType: Ssh
+          execution:
+            steps:
+              - step:
+                  name: Delegate Selector
+                  identifier: Delegate_Selector
+                  template:
+                    templateRef: account.Delegate_Selector
+              - step:
+                  name: Create Working Directories
+                  identifier: Create_Working_Directories
+                  template:
+                    templateRef: account.Create_Working_Directories
+                    templateInputs:
+                      type: Command
+                      spec:
+                        type: Command
+                        onDelegate: true
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+              - step:
+                  type: Command
+                  name: Retrieve Source Artifact
+                  identifier: Retrieve_Source_Artifact
+                  spec:
+                    onDelegate: true
+                    environmentVariables: []
+                    outputVariables:
+                      - name: lambdazipfile
+                        type: String
+                        value: lambdazipfile
+                    output:
+                      - name: DestinationPath
+                        value: <+variable.runtimePath>/*.zip
+                    commandUnits:
+                      - identifier: Download_Artifact
+                        name: Download Artifact
+                        type: DownloadArtifact
+                        spec:
+                          destinationPath: <+variable.runtimePath>
+                          artifactFormat: ZIP
+                      - identifier: Unzip_Artifact_Archive_file
+                        name: Get Lambda API Zip Artifact filename
+                        type: Script
+                        spec:
+                          workingDirectory: <+variable.runtimePath>
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                ls -la <+variable.runtimePath>
+                                pwd
+                                zipfiles=(*.zip)
+                                lambdazipfile=$zipfiles
+                                echo "lambdazipfile" $lambdazipfile
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                  timeout: 10m
+              - step:
+                  name: Get TFC TOKEN
+                  identifier: Get_TFC_TOKEN
+                  template:
+                    templateRef: Get_TFC_Token
+                    versionLabel: "1"
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        executionTarget: {}
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        environmentVariables:
+                          - name: VAULT_NAMESPACE
+                            type: String
+                            value: ghec-appdev
+                          - name: VAULT_ROLE
+                            type: String
+                            value: regions-appdev_shared_secrets-role
+                          - name: MAX_RETRIES
+                            type: String
+                            value: "10"
+                          - name: VAULT_SERVICEACCOUNT
+                            type: String
+                            value: svc_harn_vault_p
+                          - name: VAULT_URL
+                            type: String
+                            value: https://hv.rgbk.com:8200
+              - step:
+                  name: Generate Credentials File
+                  identifier: generate_credentials_file
+                  template:
+                    templateRef: account.generateCredentialsFileV2
+                    versionLabel: v8
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        environmentVariables:
+                          - name: TFE_URL
+                            type: String
+                            value: <+pipeline.variables.tf_domain>
+                          - name: TFE_TOKEN
+                            type: String
+                            value: <+execution.steps.Get_TFC_TOKEN.output.outputVariables.TFC_TOKEN>
+                          - name: WORKING_DIRECTORY
+                            type: String
+                            value: <+variable.runtimePath>
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+              - stepGroup:
+                  name: Deploy App
+                  identifier: Deploy_App
+                  steps:
+                    - step:
+                        name: Get AWS Creds
+                        identifier: Get_AWS_Creds
+                        template:
+                          templateRef: account.getAwsCredentials
+                          versionLabel: v1
+                          templateInputs:
+                            type: ShellScript
+                            spec:
+                              environmentVariables:
+                                - name: VAULT_URL
+                                  type: String
+                                  value: https://hv.rgbk.com:8200
+                                - name: VAULT_SERVICEACCOUNT
+                                  type: String
+                                  value: svc_harn_vault_p
+                                - name: VAULT_NAMESPACE
+                                  type: String
+                                  value: <+pipeline.variables.AWS_VAULT_NAMESPACE>
+                                - name: CREDS_PRODUCER_NAME
+                                  type: String
+                                  value: <+pipeline.stages.test.variables.AWS_CREDS_PRODUCER_NAME>
+                                - name: CREDS_PRODUCER_ROLE
+                                  type: String
+                                  value: <+pipeline.stages.test.variables.AWS_CREDS_PRODUCER_ROLE>
+                                - name: MAX_RETRIES
+                                  type: String
+                                  value: "10"
+                                - name: RETRY_INTERVAL
+                                  type: String
+                                  value: "5"
+                              delegateSelectors:
+                                - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                    - step:
+                        type: ShellScript
+                        name: Upload app to S3
+                        identifier: Upload_app_to_S3
+                        spec:
+                          shell: Bash
+                          executionTarget: {}
+                          source:
+                            type: Inline
+                            spec:
+                              script: "set -euo pipefail\n\necho \"S3 Bucket Path:- ${S3_BUCKET}\"\n\n# Configure AWS configure credentials\naws configure set default.region ${AWS_REGION}\naws configure set aws_access_key_id ${AWS_ACCESS_KEY}\naws configure set aws_secret_access_key ${AWS_SECRET_KEY}\n\nfunction verifyBucketAccess() {\n\taws s3api head-bucket --bucket ${S3_BUCKET}\n\treturn $?\n}\n\nretry=0\n\nuntil [ ${retry} -ge ${MAX_RETRIES} ]\ndo\n\tverifyBucketAccess && break\n\tretry=$[${retry}+1]\n\techo \"Retrying\"\n\tsleep ${RETRY_INTERVAL}\ndone\n\nif [ ${retry} -ge ${MAX_RETRIES} ]; then\n  echo \"Failed after ${MAX_RETRIES} attempts!\"\n  exit 1\nfi\n\necho \"S3 - ${S3_BUCKET}\"\n\n# Delete existing files in S3\necho \"S3 - ${S3_BUCKET} - Deleting zip files\"\naws s3 rm s3://${S3_BUCKET} --recursive --exclude \"*\" --include \"*.zip\"\n\n# Copy files to S3 \necho \"S3 - ${S3_BUCKET} - Uploading new zip file\"\naws s3 cp \"${SOURCE_DIR}\" s3://${S3_BUCKET} --recursive\n"
+                          environmentVariables:
+                            - name: AWS_ACCESS_KEY
+                              type: String
+                              value: <+execution.steps.Deploy_App.steps.Get_AWS_Creds.output.outputVariables.ACCESS_KEY>
+                            - name: AWS_SECRET_KEY
+                              type: String
+                              value: <+execution.steps.Deploy_App.steps.Get_AWS_Creds.output.outputVariables.SECRET_KEY>
+                            - name: AWS_REGION
+                              type: String
+                              value: us-east-1
+                            - name: S3_BUCKET
+                              type: String
+                              value: <+pipeline.variables.S3LambdaBucket>
+                            - name: SOURCE_DIR
+                              type: String
+                              value: <+variable.runtimePath>
+                            - name: MAX_RETRIES
+                              type: String
+                              value: "5"
+                            - name: RETRY_INTERVAL
+                              type: String
+                              value: "25"
+                          outputVariables: []
+                          delegateSelectors:
+                            - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        timeout: 10m
+              - step:
+                  type: TerraformPlan
+                  name: Terraform Plan
+                  identifier: TerraformPlan_1
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |
+                          echo $lambda_filepath
+                    provisionerIdentifier: wmpor_repository_aws
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                    cloudCliConfiguration:
+                      command: Apply
+                      configFiles:
+                        store:
+                          spec:
+                            connectorRef: wmporrepository
+                            gitFetchType: Branch
+                            repoName: wmpor-repository
+                            branch: feature/terraform-setup
+                            folderPath: src/wmpor.api/infra
+                          type: Github
+                      environmentVariables:
+                        - name: TF_CLI_CONFIG_FILE
+                          value: <+execution.steps.generate_credentials_file.output.outputVariables.TF_CLI_CONFIG_FILE>
+                          type: String
+                        - name: TF_LOG
+                          value: INFO
+                          type: String
+                        - name: lambda_file_path
+                          value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                          type: String
+                      commandFlags:
+                        - commandType: PLAN
+                          flag: <+variable.account.tfcplan_cmd_args_for_wiz>
+                      varFiles:
+                        - varFile:
+                            type: Remote
+                            identifier: tfvars
+                            spec:
+                              store:
+                                type: Github
+                                spec:
+                                  gitFetchType: Branch
+                                  repoName: wmpor-repository
+                                  branch: feature/terraform-setup
+                                  paths:
+                                    - src/wmpor.api/infra/env.<+env.identifier>.tfvars
+                                  connectorRef: wmporrepository
+                  timeout: 10m
+                  when:
+                    stageStatus: Success
+                    condition: "true"
+              - step:
+                  name: Wiz IaC Scan
+                  identifier: Wiz_IaC_Scan
+                  template:
+                    templateRef: account.Wiz_IaC_Scan
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        environmentVariables:
+                          - name: TFE_TOKEN
+                            type: String
+                            value: <+execution.steps.Get_TFC_TOKEN.output.outputVariables.TFC_TOKEN>
+                          - name: WORKING_DIRECTORY
+                            type: String
+                            value: <+variable.runtimePath>
+              - step:
+                  type: HarnessApproval
+                  name: Approve IaC changes
+                  identifier: HarnessApproval_1
+                  spec:
+                    approvalMessage: Please review the following information and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - account.Account_Admin
+                        - account.HARN_WMPOR_DEV
+                        - account.HARN_WMPOR_ADM
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs: []
+                  timeout: 1d
+              - step:
+                  type: TerraformApply
+                  name: Terraform Apply
+                  identifier: Terraform_Apply
+                  spec:
+                    provisionerIdentifier: wmpor_repository_aws
+                    cloudCliConfiguration:
+                      spec:
+                        configFiles:
+                          store:
+                            spec:
+                              connectorRef: wmporrepository
+                              repoName: wmpor-repository
+                              gitFetchType: Branch
+                              branch: feature/terraform-setup
+                              folderPath: src/wmpor.api/infra
+                            type: Github
+                        environmentVariables:
+                          - name: TF_CLI_CONFIG_FILE
+                            value: <+execution.steps.generate_credentials_file.output.outputVariables.TF_CLI_CONFIG_FILE>
+                            type: String
+                          - name: TF_LOG
+                            value: INFO
+                            type: String
+                          - name: lambda_file_path
+                            type: String
+                            value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                        variables:
+                          - name: lambda_file_path
+                            type: string
+                            value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                        varFiles:
+                          - varFile:
+                              type: Remote
+                              identifier: tfvars
+                              spec:
+                                store:
+                                  type: Github
+                                  spec:
+                                    gitFetchType: Branch
+                                    repoName: bs-it-alm-sample-spa
+                                    branch: feature/terraform-setup
+                                    paths:
+                                      - src/wmpor.api/infra/env.<+env.identifier>.tfvars
+                                    connectorRef: wmporrepository
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                  timeout: 10m
+              - step:
+                  name: Seeker Lambda IAST Scan
+                  identifier: lambda_scan
+                  template:
+                    templateRef: account.IAST_Seeker_and_Lambda_Scanner_V1
+                    versionLabel: v1
+                    templateInputs:
+                      type: ShellScript
+                      when:
+                        condition: <+stage.variables.seeker_enable> == "true"
+              - step:
+                  type: Email
+                  name: Email results
+                  identifier: Email_results
+                  spec:
+                    to: john.roberts@regions.com,Nikhil.Vallapureddy@regions.com,Zachery.Zima@regions.com
+                    cc: ""
+                    subject: "🎉 Harness Pipeline Execution Success: <+pipeline.name> Completed Successfully! 🎉"
+                    body: <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pipeline Success Notification</title></head><body><div><div><h1>Harness Pipeline Execution Success</h1></div><div><p>We are pleased to inform you that the pipeline <strong><+pipeline.name></strong> has successfully completed all stages. Below are the details of the execution:</p><h2>Execution Details</h2><ul><li><span><strong>Pipeline Name:</strong></span> <+pipeline.name></li><li><span><strong>Status:</strong></span> Success</li><li><span><strong>Service:</strong></span> <+service.name></li><li><span><strong>Environment:</strong></span> <+env.name></li></ul><p><strong>Additional Notes:</strong></p><p>If you have any questions or need further details, please feel free to reach out.</p><p><a href="mailto:wealthapplicationdevelopment@regions.com">Regions Wealth Engineering</a></p></div><div><p>&copy; 2024 Regions Financial.</p><p>All rights reserved.</p></div></div></body></html>
+                  timeout: 10m
+            rollbackSteps: []
+          environment:
+            environmentRef: test
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: delegate
+          service:
+            useFromStage:
+              stage: dev
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+        variables:
+          - name: seeker_enable
+            type: String
+            description: Enables or disables Seeker scan
+            required: false
+            value: "false"
+          - name: AWS_CREDS_PRODUCER_NAME
+            type: String
+            value: aws_wmpor_test-credproducer-path
+          - name: AWS_CREDS_PRODUCER_ROLE
+            type: String
+            value: aws_wmpor_test-role
+          - name: AWS_ACCOUNT_ID
+            type: String
+            value: "872515251490"
+        when:
+          pipelineStatus: Success
+          condition: "false"
+    - stage:
+        name: Approve Test
+        identifier: Approve_QA
+        description: ""
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Approve QA
+                  identifier: Approve_QA
+                  type: HarnessApproval
+                  timeout: 1d
+                  spec:
+                    approvalMessage: |-
+                      Please review the following information
+                      and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                      userGroups:
+                        - account.HARN_WMPOR_DEV
+                    isAutoRejectEnabled: false
+                    approverInputs: []
+        tags: {}
+        when:
+          pipelineStatus: Success
+          condition: "false"
+    - stage:
+        name: qa
+        identifier: qa
+        description: ""
+        type: Deployment
+        spec:
+          deploymentType: Ssh
+          execution:
+            steps:
+              - step:
+                  name: Delegate Selector
+                  identifier: Delegate_Selector
+                  template:
+                    templateRef: account.Delegate_Selector
+              - step:
+                  name: Create Working Directories
+                  identifier: Create_Working_Directories
+                  template:
+                    templateRef: account.Create_Working_Directories
+                    templateInputs:
+                      type: Command
+                      spec:
+                        type: Command
+                        onDelegate: true
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+              - step:
+                  type: Command
+                  name: Retrieve Source Artifact
+                  identifier: Retrieve_Source_Artifact
+                  spec:
+                    onDelegate: true
+                    environmentVariables: []
+                    outputVariables:
+                      - name: lambdazipfile
+                        type: String
+                        value: lambdazipfile
+                    output:
+                      - name: DestinationPath
+                        value: <+variable.runtimePath>/*.zip
+                    commandUnits:
+                      - identifier: Download_Artifact
+                        name: Download Artifact
+                        type: DownloadArtifact
+                        spec:
+                          destinationPath: <+variable.runtimePath>
+                          artifactFormat: ZIP
+                      - identifier: Unzip_Artifact_Archive_file
+                        name: Get Lambda API Zip Artifact filename
+                        type: Script
+                        spec:
+                          workingDirectory: <+variable.runtimePath>
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                ls -la <+variable.runtimePath>
+                                pwd
+                                zipfiles=(*.zip)
+                                lambdazipfile=$zipfiles
+                                echo "lambdazipfile" $lambdazipfile
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                  timeout: 10m
+              - step:
+                  name: Get TFC TOKEN
+                  identifier: Get_TFC_TOKEN
+                  template:
+                    templateRef: Get_TFC_Token
+                    versionLabel: "1"
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        executionTarget: {}
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        environmentVariables:
+                          - name: VAULT_NAMESPACE
+                            type: String
+                            value: ghec-appdev
+                          - name: VAULT_ROLE
+                            type: String
+                            value: regions-appdev_shared_secrets-role
+                          - name: MAX_RETRIES
+                            type: String
+                            value: "10"
+                          - name: VAULT_SERVICEACCOUNT
+                            type: String
+                            value: svc_harn_vault_p
+                          - name: VAULT_URL
+                            type: String
+                            value: https://hv.rgbk.com:8200
+              - step:
+                  name: Generate Credentials File
+                  identifier: generate_credentials_file
+                  template:
+                    templateRef: account.generateCredentialsFileV2
+                    versionLabel: v8
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        environmentVariables:
+                          - name: TFE_URL
+                            type: String
+                            value: <+pipeline.variables.tf_domain>
+                          - name: TFE_TOKEN
+                            type: String
+                            value: <+execution.steps.Get_TFC_TOKEN.output.outputVariables.TFC_TOKEN>
+                          - name: WORKING_DIRECTORY
+                            type: String
+                            value: <+variable.runtimePath>
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+              - step:
+                  type: TerraformPlan
+                  name: Terraform Plan
+                  identifier: TerraformPlan_1
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |
+                          echo $lambda_filepath
+                    provisionerIdentifier: wmpor_repository_aws
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                    cloudCliConfiguration:
+                      command: Apply
+                      configFiles:
+                        store:
+                          spec:
+                            connectorRef: wmporrepository
+                            gitFetchType: Branch
+                            repoName: wmpor-repository
+                            branch: feature/terraform-setup
+                            folderPath: src/wmpor.api/infra
+                          type: Github
+                      environmentVariables:
+                        - name: TF_CLI_CONFIG_FILE
+                          value: <+execution.steps.generate_credentials_file.output.outputVariables.TF_CLI_CONFIG_FILE>
+                          type: String
+                        - name: TF_LOG
+                          value: INFO
+                          type: String
+                        - name: lambda_file_path
+                          value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                          type: String
+                        - name: TF_WORKSPACE
+                          value: wmpor-portalapi-qa
+                          type: String
+                      commandFlags:
+                        - commandType: PLAN
+                          flag: <+variable.account.tfcplan_cmd_args_for_wiz>
+                      varFiles:
+                        - varFile:
+                            type: Remote
+                            identifier: tfvars
+                            spec:
+                              store:
+                                type: Github
+                                spec:
+                                  gitFetchType: Branch
+                                  repoName: wmpor-repository
+                                  branch: feature/terraform-setup
+                                  paths:
+                                    - src/wmpor.api/infra/env.<+env.identifier>.tfvars
+                                  connectorRef: wmporrepository
+                  timeout: 10m
+                  when:
+                    stageStatus: Success
+                    condition: "true"
+              - step:
+                  name: Wiz IaC Scan
+                  identifier: Wiz_IaC_Scan
+                  template:
+                    templateRef: account.Wiz_IaC_Scan
+                    templateInputs:
+                      type: ShellScript
+                      spec:
+                        delegateSelectors:
+                          - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        environmentVariables:
+                          - name: TFE_TOKEN
+                            type: String
+                            value: <+execution.steps.Get_TFC_TOKEN.output.outputVariables.TFC_TOKEN>
+                          - name: WORKING_DIRECTORY
+                            type: String
+                            value: <+variable.runtimePath>
+              - step:
+                  type: HarnessApproval
+                  name: Approve IaC changes
+                  identifier: HarnessApproval_1
+                  spec:
+                    approvalMessage: Please review the following information and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - account.Account_Admin
+                        - account.HARN_WMPOR_DEV
+                        - account.HARN_WMPOR_ADM
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs: []
+                  timeout: 1d
+              - step:
+                  type: TerraformApply
+                  name: Terraform Apply
+                  identifier: Terraform_Apply
+                  spec:
+                    provisionerIdentifier: wmpor_repository_aws
+                    cloudCliConfiguration:
+                      spec:
+                        configFiles:
+                          store:
+                            spec:
+                              connectorRef: wmporrepository
+                              repoName: wmpor-repository
+                              gitFetchType: Branch
+                              branch: feature/terraform-setup
+                              folderPath: src/wmpor.api/infra
+                            type: Github
+                        environmentVariables:
+                          - name: TF_CLI_CONFIG_FILE
+                            value: <+execution.steps.generate_credentials_file.output.outputVariables.TF_CLI_CONFIG_FILE>
+                            type: String
+                          - name: TF_LOG
+                            value: INFO
+                            type: String
+                          - name: lambda_file_path
+                            type: String
+                            value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                        variables:
+                          - name: lambda_file_path
+                            type: string
+                            value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                        varFiles:
+                          - varFile:
+                              type: Remote
+                              identifier: tfvars
+                              spec:
+                                store:
+                                  type: Github
+                                  spec:
+                                    gitFetchType: Branch
+                                    repoName: bs-it-alm-sample-spa
+                                    branch: feature/terraform-setup
+                                    paths:
+                                      - src/wmpor.api/infra/env.<+env.identifier>.tfvars
+                                    connectorRef: wmporrepository
+                    delegateSelectors:
+                      - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                  timeout: 10m
+              - stepGroup:
+                  name: Deploy App
+                  identifier: Deploy_App
+                  steps:
+                    - step:
+                        name: Get AWS Creds
+                        identifier: Get_AWS_Creds
+                        template:
+                          templateRef: account.getAwsCredentials
+                          versionLabel: v1
+                          templateInputs:
+                            type: ShellScript
+                            spec:
+                              environmentVariables:
+                                - name: VAULT_URL
+                                  type: String
+                                  value: https://hv.rgbk.com:8200
+                                - name: VAULT_SERVICEACCOUNT
+                                  type: String
+                                  value: svc_harn_vault_p
+                                - name: VAULT_NAMESPACE
+                                  type: String
+                                  value: <+pipeline.variables.AWS_VAULT_NAMESPACE>
+                                - name: CREDS_PRODUCER_NAME
+                                  type: String
+                                  value: <+pipeline.stages.qa.variables.AWS_CREDS_PRODUCER_NAME>
+                                - name: CREDS_PRODUCER_ROLE
+                                  type: String
+                                  value: <+pipeline.stages.qa.variables.AWS_CREDS_PRODUCER_ROLE>
+                                - name: MAX_RETRIES
+                                  type: String
+                                  value: "10"
+                                - name: RETRY_INTERVAL
+                                  type: String
+                                  value: "5"
+                              delegateSelectors:
+                                - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                    - step:
+                        type: ShellScript
+                        name: Upload app to S3
+                        identifier: Upload_app_to_S3
+                        spec:
+                          shell: Bash
+                          executionTarget: {}
+                          source:
+                            type: Inline
+                            spec:
+                              script: "set -euo pipefail\n\necho \"S3 Bucket Path:- ${S3_BUCKET}\"\n\n# Configure AWS configure credentials\naws configure set default.region ${AWS_REGION}\naws configure set aws_access_key_id ${AWS_ACCESS_KEY}\naws configure set aws_secret_access_key ${AWS_SECRET_KEY}\n\nfunction verifyBucketAccess() {\n\taws s3api head-bucket --bucket ${S3_BUCKET}\n\treturn $?\n}\n\nretry=0\n\nuntil [ ${retry} -ge ${MAX_RETRIES} ]\ndo\n\tverifyBucketAccess && break\n\tretry=$[${retry}+1]\n\techo \"Retrying\"\n\tsleep ${RETRY_INTERVAL}\ndone\n\nif [ ${retry} -ge ${MAX_RETRIES} ]; then\n  echo \"Failed after ${MAX_RETRIES} attempts!\"\n  exit 1\nfi\n\necho \"S3 - ${S3_BUCKET}\"\n\n# Delete existing files in S3\necho \"S3 - ${S3_BUCKET} - Deleting zip files\"\naws s3 rm s3://${S3_BUCKET} --recursive --exclude \"*\" --include \"*.zip\"\n\n# Copy files to S3 \necho \"S3 - ${S3_BUCKET} - Uploading new zip file\"\naws s3 cp \"${SOURCE_DIR}\" s3://${S3_BUCKET} --recursive\n"
+                          environmentVariables:
+                            - name: AWS_ACCESS_KEY
+                              type: String
+                              value: <+execution.steps.Deploy_App.steps.Get_AWS_Creds.output.outputVariables.ACCESS_KEY>
+                            - name: AWS_SECRET_KEY
+                              type: String
+                              value: <+execution.steps.Deploy_App.steps.Get_AWS_Creds.output.outputVariables.SECRET_KEY>
+                            - name: AWS_REGION
+                              type: String
+                              value: us-east-1
+                            - name: S3_BUCKET
+                              type: String
+                              value: <+pipeline.variables.S3LambdaBucket>
+                            - name: SOURCE_DIR
+                              type: String
+                              value: <+variable.runtimePath>
+                            - name: MAX_RETRIES
+                              type: String
+                              value: "5"
+                            - name: RETRY_INTERVAL
+                              type: String
+                              value: "25"
+                          outputVariables: []
+                          delegateSelectors:
+                            - <+execution.steps.Delegate_Selector.output.outputVariables.HOST_SELECTOR>
+                        timeout: 10m
+              - step:
+                  name: Seeker Lambda IAST Scan
+                  identifier: lambda_scan
+                  template:
+                    templateRef: account.IAST_Seeker_and_Lambda_Scanner_V1
+                    versionLabel: v1
+                    templateInputs:
+                      type: ShellScript
+                      when:
+                        condition: <+stage.variables.seeker_enable> == "true"
+              - step:
+                  type: Email
+                  name: Email results
+                  identifier: Email_results
+                  spec:
+                    to: john.roberts@regions.com,Nikhil.Vallapureddy@regions.com,Zachery.Zima@regions.com
+                    cc: ""
+                    subject: "🎉 Harness Pipeline Execution Success: <+pipeline.name> Completed Successfully! 🎉"
+                    body: <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pipeline Success Notification</title></head><body><div><div><h1>Harness Pipeline Execution Success</h1></div><div><p>We are pleased to inform you that the pipeline <strong><+pipeline.name></strong> has successfully completed all stages. Below are the details of the execution:</p><h2>Execution Details</h2><ul><li><span><strong>Pipeline Name:</strong></span> <+pipeline.name></li><li><span><strong>Status:</strong></span> Success</li><li><span><strong>Service:</strong></span> <+service.name></li><li><span><strong>Environment:</strong></span> <+env.name></li></ul><p><strong>Additional Notes:</strong></p><p>If you have any questions or need further details, please feel free to reach out.</p><p><a href="mailto:wealthapplicationdevelopment@regions.com">Regions Wealth Engineering</a></p></div><div><p>&copy; 2024 Regions Financial.</p><p>All rights reserved.</p></div></div></body></html>
+                  timeout: 10m
+            rollbackSteps: []
+          environment:
+            environmentRef: qa
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: delegate
+          service:
+            useFromStage:
+              stage: dev
+        tags: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+        variables:
+          - name: seeker_enable
+            type: String
+            description: Enables or disables Seeker scan
+            required: false
+            value: "false"
+          - name: AWS_CREDS_PRODUCER_NAME
+            type: String
+            value: aws_wmpor_qa-credproducer-path
+          - name: AWS_CREDS_PRODUCER_ROLE
+            type: String
+            value: aws_wmpor_qa-role
+          - name: AWS_ACCOUNT_ID
+            type: String
+            value: "863518434114"
+          - name: tf_workspace
+            type: String
+            description: ""
+            required: false
+            value: wmpor-portalapi-qa
+    - stage:
+        name: Approve QA
+        identifier: Approve_Prod
+        description: ""
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Approve Prod
+                  identifier: Approve_Prod
+                  type: HarnessApproval
+                  timeout: 1d
+                  spec:
+                    approvalMessage: |-
+                      Please review the following information
+                      and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                      userGroups:
+                        - account.HARN_WMPOR_DEV
+                        - account.HARN_WMPOR_ADM
+                    isAutoRejectEnabled: false
+                    approverInputs: []
+        tags: {}
+    - stage:
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: Production Validation
+                  identifier: Production_Validation
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |
+                          #!/bin/bash
+                          set -eu
+
+                          #Trigger Variables
+                          TRIGGER_TYPE=<+pipeline.triggerType>
+                          PIPELINE_BRANCH=<+pipeline.branch>
+                          SOURCE_BRANCH=<+trigger.payload.git_branch>
+                          #BRANCH_PATTERN="^(main|master|Release/|release/|hotfix/|Hotfix/|main*|refs/tags/main*)"
+                          BRANCH_PATTERN='main|master|((bug|hot|Hot)fix)(\/[a-zA-Z0-9]+([-_][a-zA-Z0-9]+)*){1,2}|(r|R)elease\/[0-9]+(\.[0-9]+)*(-(alpha|beta|rc)[0-9]*)?$'
+
+                          #Generic Variables
+                          RED="\033[0;31m"
+                          GREEN="\033[0;32m"
+
+
+                          echo "Trigger type is Webhook"
+                          echo "pipeline branch is release/24.2.2-patch"
+                          echo "git source branch is release/24.2.2-patch"
+
+                          echo -e "${GREEN} Git code checkout Source branch is from the protected branch pattern" 
+                          echo -e "${GREEN} Pipeline branch is from the protected branch pattern" 
+                    environmentVariables: []
+                    outputVariables:
+                      - name: TRIGGER_TYPE
+                        type: String
+                        value: TRIGGER_TYPE
+                      - name: SOURCE_BRANCH
+                        type: String
+                        value: SOURCE_BRANCH
+                      - name: PIPELINE_BRANCH
+                        type: String
+                        value: PIPELINE_BRANCH
+                  timeout: 10m
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: Abort
+                  when:
+                    stageStatus: Success
+              - step:
+                  type: HarnessApproval
+                  name: SCMD Approval
+                  identifier: SCMD_Approval
+                  spec:
+                    approvalMessage: Please review the following information and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - account.SCMD_Admins
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs:
+                      - name: TRIGGER_TYPE
+                        defaultValue: <+execution.steps.Production_Validation.output.outputVariables.TRIGGER_TYPE>
+                      - name: SOURCE_BRANCH
+                        defaultValue: <+execution.steps.Production_Validation.output.outputVariables.SOURCE_BRANCH>
+                      - name: PIPELINE_BRANCH
+                        defaultValue: <+execution.steps.Production_Validation.output.outputVariables.PIPELINE_BRANCH>
+                  timeout: 2w
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - AllErrors
+                        action:
+                          type: Abort
+                  when:
+                    stageStatus: Success
+        when:
+          pipelineStatus: Success
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: Abort
+        name: SCMD Approval
+        identifier: SCMD_Approval
+        tags: {}
+  variables:
+    - name: AWS_VAULT_NAMESPACE
+      type: String
+      description: ""
+      required: false
+      value: wmpor
+    - name: REGION
+      type: String
+      value: us-east-1
+    - name: S3LambdaBucket
+      type: String
+      description: ""
+      required: false
+      value: wmpor-api-lambda-s3-bucket
+    - name: tf_domain
+      type: String
+      description: ""
+      required: false
+      value: app.terraform.io
