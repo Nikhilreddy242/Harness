@@ -382,7 +382,8 @@ pipeline:
                             value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
                             type: String
                           - name: TF_WORKSPACE
-                            value: wmpor-portalapi-dev 
+                            value: wmpor-portalapi-dev
+                            type: String
                         varFiles:
                           - varFile:
                               type: Remote
