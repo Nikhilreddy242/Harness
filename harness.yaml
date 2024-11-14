@@ -297,7 +297,7 @@ pipeline:
                           value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
                           type: String
                         - name: TF_WORKSPACE
-                          value: <+stage.variables.TF_WORKSPACE>
+                          value: wmpor-portalapi-dev
                           type: String
                       commandFlags:
                         - commandType: PLAN
@@ -381,6 +381,8 @@ pipeline:
                           - name: lambda_file_path
                             value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
                             type: String
+                          - name: TF_WORKSPACE
+                            value: wmpor-portalapi-dev 
                         varFiles:
                           - varFile:
                               type: Remote
@@ -702,6 +704,9 @@ pipeline:
                         - name: lambda_file_path
                           value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
                           type: String
+                        - name: TF_WORKSPACE
+                          value: wmpor-portalapi-test
+                          type: String
                       commandFlags:
                         - commandType: PLAN
                           flag: <+variable.account.tfcplan_cmd_args_for_wiz>
@@ -784,6 +789,9 @@ pipeline:
                           - name: lambda_file_path
                             type: String
                             value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                          - name: TF_WORKSPACE
+                            value: wmpor-portalapi-test
+                            type: String
                         variables:
                           - name: lambda_file_path
                             type: string
@@ -1123,6 +1131,9 @@ pipeline:
                           - name: lambda_file_path
                             type: String
                             value: <+variable.runtimePath>/<+execution.steps.Retrieve_Source_Artifact.output.outputVariables.lambdazipfile>
+                          - name: TF_WORKSPACE
+                            value: wmpor-portalapi-qa
+                            type: String
                         variables:
                           - name: lambda_file_path
                             type: string
